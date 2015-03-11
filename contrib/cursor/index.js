@@ -173,6 +173,36 @@ IndexedCursorPrototype.cursor = function(subKeyPath) {
   return subKeyPath.length === 0 ? this : subCursor(this, subKeyPath);
 }
 
+KeyedCursorPrototype.cursorAt =
+IndexedCursorPrototype.cursorAt = function(keyPath) {
+  keyPath = valToKeyPath(keyPath);
+  // could check that keyPath equals existing and return this
+  var cursor = makeCursor( // call without value
+    this._rootData,
+    keyPath,
+    this._onChange
+  );
+  if (!arrayStartsWith(keyPath, this._keyPath)) {
+    // cursor._nonDescendant = true;
+    throw new Error('Non-descendant cursor path:' + keyPath +
+                    ' parent:' + this._keyPath);
+  }
+  return cursor;
+}
+
+/**
+  shallow array comparison, suitable for array of strings
+  */
+function arrayStartsWith(arr, arrStart) {
+  if (arr.length < arrStart.length) { return false; }
+  for(var i = 0; i<arrStart.length; i++) {
+    if (arr[i] !== arrStart[i]) { return false; }
+  }
+  return true;
+}
+
+
+
 /**
  * All iterables need to implement __iterate
  */
