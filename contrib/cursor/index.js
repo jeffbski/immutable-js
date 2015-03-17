@@ -22,35 +22,39 @@ var Seq = Immutable.Seq;
 var Map = Immutable.Map;
 
 
-function cursorFrom(rootData, keyPath, onChange) {
+function cursorFrom(rootData, keyPath, onChange, namedPaths) {
   if (arguments.length === 1) {
     keyPath = [];
   } else if (typeof keyPath === 'function') {
+    namedPaths = onChange;
     onChange = keyPath;
     keyPath = [];
   } else {
     keyPath = valToKeyPath(keyPath);
   }
-  return makeCursor(rootData, keyPath, onChange);
+  if (!namedPaths) { namedPaths = {}; }
+  return makeCursor(rootData, keyPath, onChange, namedPaths);
 }
 
 
 var KeyedCursorPrototype = Object.create(Seq.Keyed.prototype);
 var IndexedCursorPrototype = Object.create(Seq.Indexed.prototype);
 
-function KeyedCursor(rootData, keyPath, onChange, size) {
+function KeyedCursor(rootData, keyPath, onChange, size, namedPaths) {
   this.size = size;
   this._rootData = rootData;
   this._keyPath = keyPath;
   this._onChange = onChange;
+  this.namedPaths = namedPaths;
 }
 KeyedCursorPrototype.constructor = KeyedCursor;
 
-function IndexedCursor(rootData, keyPath, onChange, size) {
+function IndexedCursor(rootData, keyPath, onChange, size, namedPaths) {
   this.size = size;
   this._rootData = rootData;
   this._keyPath = keyPath;
   this._onChange = onChange;
+  this.namedPaths = namedPaths;
 }
 IndexedCursorPrototype.constructor = IndexedCursor;
 
@@ -60,6 +64,16 @@ KeyedCursorPrototype.toString = function() {
 IndexedCursorPrototype.toString = function() {
   return this.__toString('Cursor [', ']');
 }
+
+KeyedCursorPrototype.registerNamedPaths =
+IndexedCursorPrototype.registerNamedPaths = function(namedPaths) {
+  var currentKeyPath = this._keyPath;
+  this.namedPaths = Object.keys(namedPaths).reduce(function (accum, k) {
+    // should we warn if overwriting a previous key?
+    accum[k] = newKeyPath(currentKeyPath, namedPaths[k]);
+    return accum;
+  }, this.namedPaths);
+};
 
 KeyedCursorPrototype.deref =
 KeyedCursorPrototype.valueOf =
@@ -174,6 +188,36 @@ IndexedCursorPrototype.cursor = function(subKeyPath) {
 }
 
 /**
+ Return subCursor by name. If named cursor is not a subPath of
+  current cursor, then log warning and return undefined
+  */
+KeyedCursorPrototype.named =
+IndexedCursorPrototype.named = function(cursorName) {
+  var keyPath = this.namedPaths[cursorName];
+  if (!keyPath) {
+    console.warn('Warning: named cursor (' + cursorName +
+                 ') was not found, returning undefined');
+    return undefined;
+  }
+  if (!arrayStartsWith(keyPath, this._keyPath)) {
+    console.warn('Warning: named cursor (' + cursorName + ') with path [' +
+                 keyPath + '] is not a subPath of the curent path [' +
+                 this._keyPath + '] returning undefined');
+    return undefined;
+  }
+
+  // could check that keyPath equals existing and return this
+  var cursor = makeCursor( // call without value
+    this._rootData,
+    keyPath,
+    this._onChange,
+    this.namedPaths
+  );
+  return cursor;
+};
+
+
+/**
  * All iterables need to implement __iterate
  */
 KeyedCursorPrototype.__iterate =
@@ -219,13 +263,13 @@ IndexedCursor.prototype = IndexedCursorPrototype;
 
 var NOT_SET = {}; // Sentinel value
 
-function makeCursor(rootData, keyPath, onChange, value) {
-  if (arguments.length < 4) {
+function makeCursor(rootData, keyPath, onChange, namedPaths, value) {
+  if (arguments.length < 5) {
     value = rootData.getIn(keyPath);
   }
   var size = value && value.size;
   var CursorClass = Iterable.isIndexed(value) ? IndexedCursor : KeyedCursor;
-  return new CursorClass(rootData, keyPath, onChange, size);
+  return new CursorClass(rootData, keyPath, onChange, size, namedPaths);
 }
 
 function wrappedValue(cursor, keyPath, value) {
@@ -237,13 +281,15 @@ function subCursor(cursor, keyPath, value) {
     return makeCursor( // call without value
       cursor._rootData,
       newKeyPath(cursor._keyPath, keyPath),
-      cursor._onChange
+      cursor._onChange,
+      cursor.namedPaths
     );
   }
   return makeCursor(
     cursor._rootData,
     newKeyPath(cursor._keyPath, keyPath),
     cursor._onChange,
+    cursor.namedPaths,
     value
   );
 }
@@ -265,7 +311,7 @@ function updateCursor(cursor, changeFn, changeKeyPath) {
   if (result !== undefined) {
     newRootData = result;
   }
-  return makeCursor(newRootData, cursor._keyPath, cursor._onChange);
+  return makeCursor(newRootData, cursor._keyPath, cursor._onChange, cursor.namedPaths);
 }
 
 function newKeyPath(head, tail) {
@@ -281,6 +327,17 @@ function valToKeyPath(val) {
   return Array.isArray(val) ? val :
     Iterable.isIterable(val) ? val.toArray() :
     [val];
+}
+
+/**
+  shallow array comparison, suitable for array of strings
+  */
+function arrayStartsWith(arr, arrStart) {
+  if (arr.length < arrStart.length) { return false; }
+  for(var i = 0; i<arrStart.length; i++) {
+    if (arr[i] !== arrStart[i]) { return false; }
+  }
+  return true;
 }
 
 exports.from = cursorFrom;
