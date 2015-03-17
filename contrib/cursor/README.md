@@ -31,3 +31,26 @@ cursor.get('c'); // 2
 
 data.getIn(['a', 'b', 'c']); // 2
 ```
+
+## Named Cursors
+
+```javascript
+var optionalNamedPaths = {
+  cat: ['e', 'f']
+};
+var cursor = Cursor.from(data, ['a', 'b'], newData => {
+  data = newData;
+}, optionalNamedPaths); // optionally provide namedPaths to factory
+
+// and/or can register additional namedPaths relative to current cursor
+cursor.registerNamedPaths({
+  foo: ['a', 'b', 'c'],
+  bar: ['d']
+});
+
+var c1 = cursor.named('foo'); // points to ['a', 'b', 'c']
+var cA = cursor.cursor(['a']);
+var cABC = cA.named('foo'); // points to ['a', 'b', 'c']
+// logs error with console.warn and return undefined if not subPath
+var cFails = cursor.cursor(['d']).named('foo'); // undefined not subPath
+```
