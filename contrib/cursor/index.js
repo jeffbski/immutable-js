@@ -277,6 +277,7 @@ function listToKeyPath(list) {
 }
 
 function valToKeyPath(val) {
+  if (!val) { return []; } // undefined or empty, use []
   return Array.isArray(val) ? val :
     Iterable.isIterable(val) ? val.toArray() :
     [val];
